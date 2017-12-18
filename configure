@@ -4,7 +4,7 @@
 # The purpose is to control the compilation and testing
 # in parametrized manner from this single file
 # Created by Marko Kosunen on 24.03.2015
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 14.12.2017 13:47
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 14.12.2017 13:59
 #############################################################################
 ##Function to display help with -h argument and to control 
 ##The configuration from the commnad line
@@ -85,9 +85,8 @@ done`
 	\$(eval package:=\$(basename \$(notdir \$@)))
 	\$(eval class:=\$(basename \$(notdir \$@)))
 	\$(SBT) 'run-main \$(package).\$(class) -td \$(VERILOGPATH)' 
+	@#Should put a if-file-exists check here
 	\$(SBT) 'run-main \$(package).tb_\$(class) -td \$(VERILOGPATH)' 
-
-
 
 clean:
 	rm -f \$(VERILOGPATH)/*.v
