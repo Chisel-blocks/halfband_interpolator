@@ -4,7 +4,7 @@
 # The purpose is to control the compilation and testing
 # in parametrized manner from this single file
 # Created by Marko Kosunen on 24.03.2015
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 03.01.2018 15:27
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 03.01.2018 17:26
 #############################################################################
 ##Function to display help with -h argument and to control 
 ##The configuration from the commnad line
@@ -87,7 +87,7 @@ done`
 	\$(eval testbenchfile:=\$(dir \$<)tb_\$(notdir \$<))
 	\$(SBT) 'run-main \$(package).\$(class) -td \$(VERILOGPATH)' 
 	@#Test if testbech generator exists and compile it
-	@if [ -f \$(testbencfile) ]; then \\
+	@if [ -f \$(testbenchfile) ]; then \\
 		\$(SBT) 'run-main \$(package).tb_\$(class) -td \$(VERILOGPATH)'; \\
     fi
 clean:
