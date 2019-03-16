@@ -1,7 +1,7 @@
 //These are the half-band filters for the F2 decimator
 package halfband_interpolator
 
-//import chisel3.experimental._
+import chisel3.experimental.{withClock, withClockAndReset}
 import chisel3._
 import halfband_BW_045_N_40._
 import dsptools._
