@@ -2,7 +2,7 @@ import scala.sys.process._
 // OBS: sbt._ has also process. Importing scala.sys.process 
 // and explicitly using it ensures the correct operation
 
-organization := "Chisel.blocks"
+organization := "Chisel-blocks"
 
 name := "halfband_interpolator"
 
