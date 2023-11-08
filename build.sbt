@@ -4,7 +4,7 @@ import scala.sys.process._
 
 organization := "Chisel-blocks"
 
-name := "halfband_interpolator"
+name := "fir"
 
 version := scala.sys.process.Process("git rev-parse --short HEAD").!!.mkString.replaceAll("\\s", "")
 

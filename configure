@@ -41,7 +41,7 @@ SCALAPATH=${ROOTPATH}/src/main/scala
 FIRRTL_JAR="$ROOTPATH/rocket-chip/firrtl/utils/bin/firrtl.jar"
 
 VPATHDIRS=`find ${SCALAPATH}/* -type d -exec basename '{}' ';'`
-MODULES="halfband_interpolator"
+MODULES="fir"
 
 ############################# MAKEFILE   ####################################
 CURRENTFILE="${ROOTPATH}/Makefile"
