@@ -36,32 +36,53 @@ done
 #$FIRRTL #Sets up THESDKHOME from gloabl setup file
 #. ../../TheSDK.config
 ROOTPATH=`pwd`
-VERILOGPATH=${ROOTPATH}/verilog
+VERILOGDIR=verilog
+VERILOGPATH=${ROOTPATH}/${VERILOGDIR}
 SCALAPATH=${ROOTPATH}/src/main/scala
 FIRRTL_JAR="$ROOTPATH/rocket-chip/firrtl/utils/bin/firrtl.jar"
 
 VPATHDIRS=`find ${SCALAPATH}/* -type d -exec basename '{}' ';'`
+MAINMODULE="fir"
 MODULES="fir"
+TEST_MODULES=""
+PACKAGE="fir"
+
 
 ############################# MAKEFILE   ####################################
 CURRENTFILE="${ROOTPATH}/Makefile"
+
 echo "Creating ${CURRENTFILE} for modules:"
 for i in ${MODULES}; do
     echo $i
 done
+
 cat <<EOF > ${CURRENTFILE}
 #Directories
-VERILOGPATH= ${VERILOGPATH}
-SCALAPATH= ${SCALAPATH}
+#Directories
+VERILOGDIR ?= ${VERILOGDIR}
+VERILOGPATH = ${VERILOGPATH}
+SCALAPATH = ${SCALAPATH}
 #DEPDIR :=.depdir
 #\$(shell mkdir -p \$(DEPDIR) >/dev/null)
 \$(shell mkdir -p \$(VERILOGPATH) >/dev/null)
 MODULES= ${MODULES}
+TEST_MODULES=${TEST_MODULES}
+PACKAGE=${PACKAGE}
 
-TARGETS = \$(foreach name,\$(MODULES), \$(VERILOGPATH)/\$(name).v)
+TARGETS = \$(foreach name,\$(MODULES), \$(VERILOGDIR)/\$(name).v)
+TEST_TARGETS = \$(foreach name,\$(TEST_MODULES), test_\$(name))
+
 #Commands
 SBT=sbt -J-Xmx16G -J-Xss8M
-FIRRTL=java -Xmx16G -Xss8M -cp $FIRRTL_JAR firrtl.Driver
+
+# Default parameters
+taps ?= 16
+coeffs ?= "1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16"
+gainbits ?= 10
+
+MAINPARAMS = -n \$(taps) -c \$(coeffs) -g \$(gainbits)
+
+
 
 TOUCH=touch -r
 `for i in ${VPATHDIRS}; do
@@ -72,36 +93,35 @@ done`
 
 all: \$(TARGETS)
 
+# Test all in TEST_TARGETS
+test: \
+`
+echo ""
+echo -en "\t\\$(SBT) 'testOnly"
+for i in ${TEST_MODULES}; do
+    echo -n " ${PACKAGE}.$i"
+done
+echo "'"
+`
+
+
+${MAINMODULE}: 
+	\$(VERILOGDIR)/${MAINMODULE}.v
+\$(VERILOGDIR)/${MAINMODULE}.v:
+	\$(eval class:=\$(basename \$(notdir \$@)))
+	\$(SBT) 'runMain ${PACKAGE}.${MAINMODULE} \$(MAINPARAMS) -t \$(VERILOGDIR)'
+
 #Generate recipes for individual modules
 `for i in ${MODULES}; do
     echo -e "$i: \\$(VERILOGPATH)/$i.v"
 done`
 
-#Template for conditional makes
-#Figure out the naming conventions later. Package is lowercase, class equals main method
-#Does not track dependencies from scala source
-\$(VERILOGPATH)/%.v : %.scala  
-	\$(eval package:=\$(basename \$(notdir \$@)))
-	\$(eval class:=\$(basename \$(notdir \$@)))
-	\$(eval testbenchfile:=\$(dir \$<)tb_\$(notdir \$<))
-	\$(SBT) 'run-main \$(package).\$(class) -td \$(VERILOGPATH)' 
-	@#Test if testbech generator exists and compile it
-	@if [ -f \$(testbenchfile) ]; then \\
-		\$(SBT) 'run-main \$(package).tb_\$(class) -td \$(VERILOGPATH)'; \\
-	fi
 clean:
 	rm -f \$(VERILOGPATH)/*.v
 	rm -f \$(VERILOGPATH)/*.anno
 	rm -f \$(VERILOGPATH)/*.fir
 	rm -rf \$(VERILOGPATH)
 	#rm -rf \$(DEPDIR)
-
-#MMOD ?=
-#memmap:
-#	cp \$(VERILOGPATH)/\$(MMOD).v  \$(VERILOGPATH)/\$(MMOD)_unmapped.orig.v
-#	\$(FIRRTL) -td ./verilog -tn \$(MMOD) -i  \$(VERILOGPATH)/\$(MMOD).fir \\
-#    -o \$(VERILOGPATH)/\$(MMOD).v -X verilog  \\
-#    --infer-rw \$(MMOD) --repl-seq-mem -c:\$(MMOD):-o:\$(VERILOGPATH)/\$(MMOD).conf
 
 #Generate cleanup recipes for individual modules
 `for i in ${MODULES}; do

@@ -1,17 +1,20 @@
 // Finitie impulse filter
 package fir
 
-import chisel3.experimental.{withClock, withClockAndReset}
+import scopt.OParser
+import java.io.File
+
 import chisel3._
+import chisel3.stage.ChiselGeneratorAnnotation
+import circt.stage.{ChiselStage, FirtoolOption}
+
 import dsptools._
 import dsptools.numbers._
-import breeze.math.Complex
+//import breeze.math.Complex
 
-import fir_BW_045_N_40._
-
-class fir (n: Int = 16, coeffs: Seq[Int]=Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16), gainbits: Int = 10) extends Module {
+class fir (n: Int = 16, coeffs: Seq[Int]=Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16), gainBits: Int = 10) extends Module {
     val io = IO(new Bundle {
-        val scale       = Input(UInt(gainbits.W))
+        val scale       = Input(UInt(gainBits.W))
         val iptr_A      = Input(DspComplex(SInt(n.W), SInt(n.W)))
         val Z		= Output(DspComplex(SInt(n.W), SInt(n.W)))
     })
@@ -47,9 +50,57 @@ class fir (n: Int = 16, coeffs: Seq[Int]=Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 
 
 //This is the object to provide verilog
 object fir extends App {
-  //Convert coeffs to integers with 16 bit resolution
-  val coeffres = 16
-  val taps = fir_BW_045_N_40.H.map(_ * (math.pow(2, coeffres - 1) - 1)).map(_.toInt)
-  chisel3.Driver.execute(args, () => new fir(coeffs = taps) )
+
+  case class Config(
+      td: String = ".",
+      coeffs: Seq[Int] = Seq(),
+      n: Int = 0,
+      gainBits: Int = 0
+  )
+
+  val builder = OParser.builder[Config]
+
+  val parser1 = {
+    import builder._
+    OParser.sequence(
+      programName("fir"),
+      opt[String]('t', "target-dir")
+        .action((x, c) => c.copy(td = x))
+        .text("Verilog target directory"),
+      opt[Seq[String]]('c', "coeffs")
+        .valueName("<c1>,<c2>...")
+        .text("FIR Coefficients")
+        .action((x, c) => c.copy(coeffs = x.toList.map((s: String) => s.toInt))),
+      opt[Int]('n', "n")
+        .text("Number of taps used")
+        .action((x, c) => c.copy(n = x)),
+      opt[Int]('g', "gainBits")
+        .text("Number of gain bits used")
+        .action((x, c) => c.copy(gainBits = x))
+    )
+  }
+
+  OParser.parse(parser1, args, Config()) match {
+    case Some(config) => {
+      // These lines generate the Verilog output
+      (new circt.stage.ChiselStage).execute(
+        { Array("--target", "systemverilog") ++ Array("-td", config.td) },
+        Seq(
+          ChiselGeneratorAnnotation(() => {
+            new fir(
+              config.n,		
+              config.coeffs,
+              config.gainBits
+            )
+          }),
+          FirtoolOption("--disable-all-randomization")
+        )
+      )
+    }
+    case _ => {
+      println("Could not parse arguments")
+    }
+  }
 }
+
 
