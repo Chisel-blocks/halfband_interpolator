@@ -76,11 +76,9 @@ TEST_TARGETS = \$(foreach name,\$(TEST_MODULES), test_\$(name))
 SBT=sbt -J-Xmx16G -J-Xss8M
 
 # Default parameters
-taps ?= 16
-coeffs ?= "1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16"
-gainbits ?= 10
+config_file ?= "fir-config.yml"
 
-MAINPARAMS = -n \$(taps) -c \$(coeffs) -g \$(gainbits)
+MAINPARAMS = -config_file \$(config_file)
 
 
 
@@ -109,7 +107,7 @@ ${MAINMODULE}:
 	\$(VERILOGDIR)/${MAINMODULE}.v
 \$(VERILOGDIR)/${MAINMODULE}.v:
 	\$(eval class:=\$(basename \$(notdir \$@)))
-	\$(SBT) 'runMain ${PACKAGE}.${MAINMODULE} \$(MAINPARAMS) -t \$(VERILOGDIR)'
+	\$(SBT) 'runMain ${PACKAGE}.${MAINMODULE} \$(MAINPARAMS) -td \$(VERILOGPATH)'
 
 #Generate recipes for individual modules
 `for i in ${MODULES}; do

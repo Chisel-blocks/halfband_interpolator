@@ -1,106 +1,140 @@
 // Finitie impulse filter
 package fir
+import config._
+import config.{FirConfig}
 
-import scopt.OParser
 import java.io.File
 
 import chisel3._
+import chisel3.experimental.FixedPoint
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 import chisel3.stage.ChiselGeneratorAnnotation
-import circt.stage.{ChiselStage, FirtoolOption}
 
 import dsptools._
-import dsptools.numbers._
-//import breeze.math.Complex
+import dsptools.numbers.DspComplex
 
-class fir (n: Int = 16, coeffs: Seq[Int]=Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16), gainBits: Int = 10) extends Module {
+class fir(config: FirConfig) extends Module {
     val io = IO(new Bundle {
-        val scale       = Input(UInt(gainBits.W))
-        val iptr_A      = Input(DspComplex(SInt(n.W), SInt(n.W)))
-        val Z		= Output(DspComplex(SInt(n.W), SInt(n.W)))
+        val scale       = Input(UInt(config.gainBits.W))
+        val iptr_A      = Input(DspComplex(SInt(config.n.W), SInt(config.n.W)))
+        val Z		= Output(DspComplex(SInt(config.n.W), SInt(config.n.W)))
     })
-    val inreg = RegInit(DspComplex.wire(0.S(n.W), 0.S(n.W))) //registers for sampling rate reduction
+    val inreg = RegInit(DspComplex.wire(0.S(config.n.W), 0.S(config.n.W))) //registers for sampling rate reduction
    
     inreg := io.iptr_A
 
-    val subcoeffs = coeffs.indices.map(coeffs(_)) //Coeffs
-    println(subcoeffs)
+    val subcoeffs = config.H.indices.map(config.H(_)) //Coeffs
+    //println(subcoeffs)
 
     val tapped = subcoeffs.reverse.map(tap => inreg * tap) //Coeffs * regs
-    val registerchain = RegInit(VecInit(Seq.fill(tapped.length + 1)(DspComplex.wire(0.S(n.W), 0.S(n.W)))))
+    val registerchain = RegInit(VecInit(Seq.fill(tapped.length + 1)(DspComplex.wire(0.S(config.n.W), 0.S(config.n.W)))))
 
      //Summation
     for ( i <- 0 to tapped.length - 1) {
         if (i == 0) {
             registerchain(i + 1) := tapped(i)
         } else {
-            registerchain(i + 1) := registerchain(i) + tapped(i)
+            registerchain(i + 1) := tapped(i)
         }
     }
 
     val subfil = registerchain(tapped.length)
 
-    val outreg = RegInit(DspComplex.wire(0.S(n.W), 0.S(n.W)))
+    val outreg = RegInit(DspComplex.wire(0.S(config.n.W), 0.S(config.n.W)))
 
     //Scaling
-    outreg.real := (subfil.real * io.scale)(n, 0).asSInt
-    outreg.imag := (subfil.imag * io.scale)(n, 0).asSInt
+    outreg.real := (subfil.real * io.scale)(config.n, 0).asSInt
+    outreg.imag := (subfil.imag * io.scale)(config.n, 0).asSInt
 
     io.Z := outreg
 }
 
-//This is the object to provide verilog
-object fir extends App {
+/** Generates verilog */
+object fir extends App with OptionParser {
+  // Parse command-line arguments
+  val (options, arguments) = getopts(default_opts, args.toList)
+  printopts(options, arguments)
 
-  case class Config(
-      td: String = ".",
-      coeffs: Seq[Int] = Seq(),
-      n: Int = 0,
-      gainBits: Int = 0
-  )
-
-  val builder = OParser.builder[Config]
-
-  val parser1 = {
-    import builder._
-    OParser.sequence(
-      programName("fir"),
-      opt[String]('t', "target-dir")
-        .action((x, c) => c.copy(td = x))
-        .text("Verilog target directory"),
-      opt[Seq[String]]('c', "coeffs")
-        .valueName("<c1>,<c2>...")
-        .text("FIR Coefficients")
-        .action((x, c) => c.copy(coeffs = x.toList.map((s: String) => s.toInt))),
-      opt[Int]('n', "n")
-        .text("Number of taps used")
-        .action((x, c) => c.copy(n = x)),
-      opt[Int]('g', "gainBits")
-        .text("Number of gain bits used")
-        .action((x, c) => c.copy(gainBits = x))
-    )
+  val config_file = options("config_file")
+  var fir_config: Option[FirConfig] = None
+  FirConfig.loadFromFile(config_file) match {
+    case Left(config) => {
+      fir_config = Some(config)
+    }
+    case Right(err) => {
+      System.err.println(s"\nCould not load FIR configuration from file:\n${err.msg}")
+      System.exit(-1)
+    }
   }
 
-  OParser.parse(parser1, args, Config()) match {
-    case Some(config) => {
-      // These lines generate the Verilog output
-      (new circt.stage.ChiselStage).execute(
-        { Array("--target", "systemverilog") ++ Array("-td", config.td) },
-        Seq(
-          ChiselGeneratorAnnotation(() => {
-            new fir(
-              config.n,		
-              config.coeffs,
-              config.gainBits
-            )
-          }),
-          FirtoolOption("--disable-all-randomization")
+  // Generate verilog
+  val annos = Seq(ChiselGeneratorAnnotation(() => new fir(config=fir_config.get)))
+  (new ChiselStage).execute(arguments.toArray, annos)
+}
+
+/** Module-specific command-line option parser */
+trait OptionParser {
+  // Module specific command-line option flags
+  val available_opts: List[String] = List(
+      "-config_file"
+  )
+
+  // Default values for the command-line options
+  val default_opts : Map[String, String] = Map(
+    "config_file"->"fir-config.yml"
+  )
+
+  /** Recursively parse option flags from command line args
+   * @param options Map of command line option names to their respective values.
+   * @param arguments List of arguments to parse.
+   * @return a tuple whose first element is the map of parsed options to their values 
+   *         and the second element is the list of arguments that don't take any values.
+   */
+  def getopts(options: Map[String, String], arguments: List[String]) : (Map[String, String], List[String]) = {
+    val usage = s"""
+      |Usage: ${this.getClass.getName.replace("$","")} [-<option> <argument>]
+      |
+      | Options
+      |     -config_file        [String]  : Generator YAML configuration file name. Default "fir-config.yml".
+      |     -h                            : Show this help message.
+      """.stripMargin
+
+    // Parse next elements in argument list
+    arguments match {
+      case "-h" :: tail => {
+        println(usage)
+        sys.exit()
+      }
+      case option :: value :: tail if available_opts contains option => {
+        val (newopts, newargs) = getopts(
+            options ++ Map(option.replace("-","") -> value), tail
         )
-      )
+        (newopts, newargs)
+      }
+      case argument :: tail => {
+        val (newopts, newargs) = getopts(options, tail)
+        (newopts, argument.toString +: newargs)
+      }
+      case Nil => (options, arguments)
     }
-    case _ => {
-      println("Could not parse arguments")
+  }
+
+  /** Print parsed options and arguments to stdout */
+  def printopts(options: Map[String, String], arguments: List[String]) = {
+    println("\nCommand line options:")
+    options.nonEmpty match {
+      case true => for ((k,v) <- options) {
+        println(s"  $k = $v")
+      }
+      case _ => println("  None")
+    }
+    println("\nCommand line arguments:")
+    arguments.nonEmpty match {
+      case true => for (arg <- arguments) {
+        println(s"  $arg")
+      }
+      case _ => println("  None")
     }
   }
 }
-
 

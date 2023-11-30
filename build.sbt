@@ -18,10 +18,8 @@ lazy val fir = (project in file("."))
     name := "fir",
     libraryDependencies ++= Seq(
       "edu.berkeley.cs" %% "chisel3" % chiselVersion,
-      "edu.berkeley.cs" %% "chiseltest" % "0.5.1",
-      "edu.berkeley.cs" %% "chisel-iotesters" % "2.5.0",
       "edu.berkeley.cs" %% "dsptools" % "1.5.6",
-      "com.github.scopt" %% "scopt" % "4.1.0"
+      "net.jcazevedo" %% "moultingyaml" % "0.4.2"
     ),
     scalacOptions ++= Seq(
       "-language:reflectiveCalls",
