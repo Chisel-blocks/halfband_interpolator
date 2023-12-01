@@ -13,7 +13,7 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import dsptools._
 import dsptools.numbers.DspComplex
 
-class fir(config: FirConfig) extends Module {
+class FIR(config: FirConfig) extends Module {
     val io = IO(new Bundle {
         val scale       = Input(UInt(config.gainBits.W))
         val iptr_A      = Input(DspComplex(SInt(config.n.W), SInt(config.n.W)))
@@ -50,7 +50,7 @@ class fir(config: FirConfig) extends Module {
 }
 
 /** Generates verilog */
-object fir extends App with OptionParser {
+object FIR extends App with OptionParser {
   // Parse command-line arguments
   val (options, arguments) = getopts(default_opts, args.toList)
   printopts(options, arguments)
@@ -68,7 +68,7 @@ object fir extends App with OptionParser {
   }
 
   // Generate verilog
-  val annos = Seq(ChiselGeneratorAnnotation(() => new fir(config=fir_config.get)))
+  val annos = Seq(ChiselGeneratorAnnotation(() => new FIR(config=fir_config.get)))
   (new ChiselStage).execute(arguments.toArray, annos)
 }
 

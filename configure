@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #############################################################################
 # This is a Chisel RTL generator configuration script file. 
 # The purpose is to control the compilation and testing
@@ -42,8 +42,8 @@ SCALAPATH=${ROOTPATH}/src/main/scala
 FIRRTL_JAR="$ROOTPATH/rocket-chip/firrtl/utils/bin/firrtl.jar"
 
 VPATHDIRS=`find ${SCALAPATH}/* -type d -exec basename '{}' ';'`
-MAINMODULE="fir"
-MODULES="fir"
+MAINMODULE="FIR"
+MODULES=""
 TEST_MODULES=""
 PACKAGE="fir"
 
@@ -57,7 +57,6 @@ for i in ${MODULES}; do
 done
 
 cat <<EOF > ${CURRENTFILE}
-#Directories
 #Directories
 VERILOGDIR ?= ${VERILOGDIR}
 VERILOGPATH = ${VERILOGPATH}
@@ -91,28 +90,16 @@ done`
 
 all: \$(TARGETS)
 
-# Test all in TEST_TARGETS
-test: \
-`
-echo ""
-echo -en "\t\\$(SBT) 'testOnly"
-for i in ${TEST_MODULES}; do
-    echo -n " ${PACKAGE}.$i"
-done
-echo "'"
-`
-
-
-${MAINMODULE}: 
-	\$(VERILOGDIR)/${MAINMODULE}.v
+${MAINMODULE}: \$(VERILOGDIR)/${MAINMODULE}.v
 \$(VERILOGDIR)/${MAINMODULE}.v:
-	\$(eval class:=\$(basename \$(notdir \$@)))
 	\$(SBT) 'runMain ${PACKAGE}.${MAINMODULE} \$(MAINPARAMS) -td \$(VERILOGPATH)'
 
 #Generate recipes for individual modules
+# Recipes for individual modules 
 `for i in ${MODULES}; do
-    echo -e "$i: \\$(VERILOGPATH)/$i.v"
-done`
+ 	echo -e "$i: \\$(VERILOGDIR)/$i.v"
+ 	echo -e "\t\\$(SBT) 'runMain ${PACKAGE}.$i -td \\$(VERILOGDIR)'"
+ done`
 
 clean:
 	rm -f \$(VERILOGPATH)/*.v
