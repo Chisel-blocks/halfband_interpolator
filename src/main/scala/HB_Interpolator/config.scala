@@ -73,7 +73,7 @@ object HbConfig {
     var fileString: String = ""
     try {
       val bufferedSource = Source.fromFile(filename)
-      fileString = bufferedSource.getLines.mkString("\n")
+      fileString = bufferedSource.getLines().mkString("\n")
       bufferedSource.close
     } catch {
       case e: Exception => return Right(Error(e.getMessage()))

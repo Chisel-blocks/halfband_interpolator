@@ -15,6 +15,7 @@ import dsptools.numbers.DspComplex
 
 class HB_InterpolatorIO(resolution: Int, gainBits: Int) extends Bundle {
   val in = new Bundle {
+    val clock_high = Input(Clock())
     val scale  = Input(UInt(gainBits.W))
     val iptr_A = Input(DspComplex(SInt(resolution.W), SInt(resolution.W)))
   }
@@ -25,22 +26,23 @@ class HB_InterpolatorIO(resolution: Int, gainBits: Int) extends Bundle {
 
 class HB_Interpolator(config: HbConfig) extends Module {
     val io = IO(new HB_InterpolatorIO(resolution=config.resolution, gainBits=config.gainBits))
+    val data_reso = config.resolution
+    val calc_reso = config.resolution * 2
 
-    val czero  = DspComplex(0.S(resolution.W),0.S(resolution.W)) //Constant complex zero
-    val inregs  = RegInit(VecInit(Seq.fill(2)(DspComplex.wire(0.S(n.W), 0.S(n.W))))) //registers for sampling rate reduction
+    val inregs  = RegInit(VecInit(Seq.fill(2)(DspComplex.wire(0.S(data_reso.W), 0.S(data_reso.W))))) //registers for sampling rate reduction
     inregs.map(_:=io.in.iptr_A)
 
     //The half clock rate domain
-    val slowregs  = RegInit(VecInit(Seq.fill(2)(DspComplex.wire(0.S(n.W), 0.S(n.W))))) //registers for sampling rate reduction
+    val slowregs  = RegInit(VecInit(Seq.fill(2)(DspComplex.wire(0.S(data_reso.W), 0.S(data_reso.W))))) //registers for sampling rate reduction
     (slowregs, inregs).zipped.map(_ := _)
 
-    val sub1coeffs = coeffs.indices.filter(_ % 2 == 0).map(coeffs(_)) //Even coeffs for Fir1
+    val sub1coeffs = config.H.indices.filter(_ % 2 == 0).map(config.H(_)) //Even coeffs for Fir1
     println(sub1coeffs)
 
     val tapped1 = sub1coeffs.reverse.map(tap => slowregs(0) * tap)
-    val registerchain1 = RegInit(VecInit(Seq.fill(tapped1.length + 1)(DspComplex.wire(0.S(resolution.W), 0.S(resolution.W)))))
+    val registerchain1 = RegInit(VecInit(Seq.fill(tapped1.length + 1)(DspComplex.wire(0.S(calc_reso.W), 0.S(calc_reso.W)))))
 
-    for ( i <- 0 to tapped1.length - 1) {
+    for ( i <- 0 until tapped1.length) {
         if (i == 0) {
 	        registerchain1(i + 1) := tapped1(i)
         } else {
@@ -50,13 +52,13 @@ class HB_Interpolator(config: HbConfig) extends Module {
 
     val subfil1 = registerchain1(tapped1.length)
 
-    val sub2coeffs = coeffs.indices.filter(_ % 2 == 1).map(coeffs(_)) //Odd coeffs for Fir 2
+    val sub2coeffs = config.H.indices.filter(_ % 2 == 1).map(config.H(_)) //Odd coeffs for Fir 2
     println(sub2coeffs)
 
     val tapped2 = sub2coeffs.reverse.map(tap => slowregs(1) * tap)
-    val registerchain2 = RegInit(VecInit(Seq.fill(tapped2.length + 1)(DspComplex.wire(0.S(resolution.W), 0.S(resolution.W)))))
+    val registerchain2 = RegInit(VecInit(Seq.fill(tapped2.length + 1)(DspComplex.wire(0.S(calc_reso.W), 0.S(calc_reso.W)))))
 
-    for ( i <- 0 to tapped2.length - 1) {
+    for ( i <- 0 until tapped2.length) {
         if (i == 0) {
 	        registerchain2(i + 1) := tapped2(i)
         } else {
@@ -67,22 +69,22 @@ class HB_Interpolator(config: HbConfig) extends Module {
     val subfil2 = registerchain2(tapped2.length)
 
     //The double clock rate domain
-    withClock (io.clock_high){
-        val outreg = RegInit(DspComplex.wire(0.S(n.W), 0.S(n.W)))
+    withClock (io.in.clock_high){
+        val outreg = RegInit(DspComplex.wire(0.S(data_reso.W), 0.S(data_reso.W)))
 
         //Slow clock sampled with fast one to control the ouput multiplexer
         val clkreg = Wire(Bool())
         clkreg := RegNext(clock.asUInt)
 
         when (clkreg === true.B) { 
-            outreg.real := (subfil1.real * io.in.scale)(resolution - 1, resolution - n).asSInt
-            outreg.imag := (subfil1.imag * io.in.scale)(resolution - 1, resolution - n).asSInt
+            outreg.real := (subfil1.real * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
+            outreg.imag := (subfil1.imag * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
         }.elsewhen (clkreg === false.B) { 
-            outreg.real := (subfil2.real * io.in.scale)(resolution - 1, resolution - n).asSInt
-            outreg.imag := (subfil2.imag * io.in.scale)(resolution - 1, resolution - n).asSInt
+            outreg.real := (subfil2.real * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
+            outreg.imag := (subfil2.imag * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
         }
 
-        io.out.Z:= outreg
+        io.out.Z := outreg
     }
 }
 
