@@ -13,49 +13,56 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import dsptools._
 import dsptools.numbers.DspComplex
 
+class FIRIO(resolution: Int, gainBits: Int) extends Bundle {
+  val in = new Bundle {
+    val scale  = Input(UInt(gainBits.W))
+    val iptr_A = Input(DspComplex(SInt(resolution.W), SInt(resolution.W)))
+  }
+  val out = new Bundle {
+    val Z = Output(DspComplex(SInt(resolution.W), SInt(resolution.W)))
+  }
+}
+
 class FIR(config: FirConfig) extends Module {
-    val io = IO(new Bundle {
-        val scale       = Input(UInt(config.gainBits.W))
-        val iptr_A      = Input(DspComplex(SInt(config.n.W), SInt(config.n.W)))
-        val Z		= Output(DspComplex(SInt(config.n.W), SInt(config.n.W)))
-    })
-    val inreg = RegInit(DspComplex.wire(0.S(config.n.W), 0.S(config.n.W))) //registers for sampling rate reduction
-   
-    inreg := io.iptr_A
+    val io = IO(new FIRIO(resolution=config.resolution, gainBits=config.gainBits))
+    val data_reso = config.resolution
+    val calc_reso = config.resolution * 2
 
     val subcoeffs = config.H.indices.map(config.H(_)) //Coeffs
-    //println(subcoeffs)
 
-    val tapped = subcoeffs.reverse.map(tap => inreg * tap) //Coeffs * regs
-    val registerchain = RegInit(VecInit(Seq.fill(tapped.length + 1)(DspComplex.wire(0.S(config.n.W), 0.S(config.n.W)))))
+    val tapped = subcoeffs.reverse.map(tap => io.in.iptr_A * tap) //Coeffs * regs
+    val registerchain = RegInit(VecInit(Seq.fill(tapped.length + 1)(DspComplex.wire(0.S(calc_reso.W), 0.S(calc_reso.W)))))
 
      //Summation
-    for ( i <- 0 to tapped.length - 1) {
+    for ( i <- 0 until tapped.length) {
         if (i == 0) {
             registerchain(i + 1) := tapped(i)
         } else {
-            registerchain(i + 1) := tapped(i)
+            registerchain(i + 1) := DspComplex.wire(registerchain(i).real + tapped(i).real, registerchain(i).imag + tapped(i).imag)
         }
     }
 
     val subfil = registerchain(tapped.length)
 
-    val outreg = RegInit(DspComplex.wire(0.S(config.n.W), 0.S(config.n.W)))
+    val outreg = RegInit(DspComplex.wire(0.S(data_reso.W), 0.S(data_reso.W)))
 
     //Scaling
-    outreg.real := (subfil.real * io.scale)(config.n, 0).asSInt
-    outreg.imag := (subfil.imag * io.scale)(config.n, 0).asSInt
+    outreg.real := (subfil.real * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
+    outreg.imag := (subfil.imag * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
 
-    io.Z := outreg
+    io.out.Z := outreg
 }
 
-/** Generates verilog */
+
+
+/** Generates verilog or sv*/
 object FIR extends App with OptionParser {
   // Parse command-line arguments
   val (options, arguments) = getopts(default_opts, args.toList)
   printopts(options, arguments)
 
   val config_file = options("config_file")
+  val target_dir = options("td")
   var fir_config: Option[FirConfig] = None
   FirConfig.loadFromFile(config_file) match {
     case Left(config) => {
@@ -69,19 +76,28 @@ object FIR extends App with OptionParser {
 
   // Generate verilog
   val annos = Seq(ChiselGeneratorAnnotation(() => new FIR(config=fir_config.get)))
-  (new ChiselStage).execute(arguments.toArray, annos)
+  //(new ChiselStage).execute(arguments.toArray, annos)
+  val sysverilog = (new ChiselStage).emitSystemVerilog(
+    new FIR(config=fir_config.get),
+     
+    //args
+    Array("--target-dir", target_dir))
 }
+
+
 
 /** Module-specific command-line option parser */
 trait OptionParser {
   // Module specific command-line option flags
   val available_opts: List[String] = List(
-      "-config_file"
+      "-config_file",
+      "-td"
   )
 
   // Default values for the command-line options
   val default_opts : Map[String, String] = Map(
-    "config_file"->"fir-config.yml"
+    "config_file"->"fir-config.yml",
+    "td"->"verilog/"
   )
 
   /** Recursively parse option flags from command line args
@@ -96,6 +112,7 @@ trait OptionParser {
       |
       | Options
       |     -config_file        [String]  : Generator YAML configuration file name. Default "fir-config.yml".
+      |     -td                 [String]  : Target dir for building. Default "verilog/".
       |     -h                            : Show this help message.
       """.stripMargin
 

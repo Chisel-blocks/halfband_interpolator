@@ -76,8 +76,9 @@ SBT=sbt -J-Xmx16G -J-Xss8M
 
 # Default parameters
 config_file ?= "fir-config.yml"
+td ?= "verilog/"
 
-MAINPARAMS = -config_file \$(config_file)
+MAINPARAMS = -config_file \$(config_file) -td \$(td)
 
 
 
@@ -92,20 +93,13 @@ all: \$(TARGETS)
 
 ${MAINMODULE}: \$(VERILOGDIR)/${MAINMODULE}.v
 \$(VERILOGDIR)/${MAINMODULE}.v:
-	\$(SBT) 'runMain ${PACKAGE}.${MAINMODULE} \$(MAINPARAMS) -td \$(VERILOGPATH)'
-
-#Generate recipes for individual modules
-# Recipes for individual modules 
-`for i in ${MODULES}; do
- 	echo -e "$i: \\$(VERILOGDIR)/$i.v"
- 	echo -e "\t\\$(SBT) 'runMain ${PACKAGE}.$i -td \\$(VERILOGDIR)'"
- done`
+	\$(SBT) 'runMain ${PACKAGE}.${MAINMODULE} \$(MAINPARAMS) -td \$(VERILOGDIR)'
 
 clean:
 	rm -f \$(VERILOGPATH)/*.v
 	rm -f \$(VERILOGPATH)/*.anno
 	rm -f \$(VERILOGPATH)/*.fir
-	rm -rf \$(VERILOGPATH)
+	#rm -rf \$(VERILOGPATH)
 	#rm -rf \$(DEPDIR)
 
 #Generate cleanup recipes for individual modules

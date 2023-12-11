@@ -12,7 +12,7 @@ import chisel3._
   */
 case class FirGeneric(
   syntax_version:     Option[Int], // None for scala instantiation
-  n:           	      Int,
+  resolution:	      Int,
   gainBits:           Int
 )
 
@@ -22,7 +22,7 @@ case class FirTaps(
 
 case class FirConfig(
   syntax_version:     Option[Int], // None for scala instantiation
-  n:           	      Int,
+  resolution:         Int,
   H:		      Seq[Int],
   gainBits:           Int
 )
@@ -95,10 +95,10 @@ object FirConfig {
     val generic = yamlAst.convertTo[FirGeneric]
     val taps = yamlAst.convertTo[FirTaps]
 
-    val config = new FirConfig(generic.syntax_version, generic.n, taps.H.map(_ * (math.pow(2, generic.n - 1) - 1)).map(_.toInt), generic.gainBits)
+    val config = new FirConfig(generic.syntax_version, generic.resolution, taps.H.map(_ * (math.pow(2, generic.resolution - 1) / 2 - 1)).map(_.toInt), generic.gainBits)
 
-    println("n:")
-    println(config.n)
+    println("resolution:")
+    println(config.resolution)
 
     println("taps:")
     println(config.H)
