@@ -1,7 +1,7 @@
 // Finitie impulse filter
-package fir
+package hb_interpolator
 import config._
-import config.{FirConfig}
+import config.{HbConfig}
 
 import java.io.File
 
@@ -13,7 +13,7 @@ import chisel3.stage.ChiselGeneratorAnnotation
 import dsptools._
 import dsptools.numbers.DspComplex
 
-class FIRIO(resolution: Int, gainBits: Int) extends Bundle {
+class HB_InterpolatorIO(resolution: Int, gainBits: Int) extends Bundle {
   val in = new Bundle {
     val scale  = Input(UInt(gainBits.W))
     val iptr_A = Input(DspComplex(SInt(resolution.W), SInt(resolution.W)))
@@ -23,62 +23,95 @@ class FIRIO(resolution: Int, gainBits: Int) extends Bundle {
   }
 }
 
-class FIR(config: FirConfig) extends Module {
-    val io = IO(new FIRIO(resolution=config.resolution, gainBits=config.gainBits))
-    val data_reso = config.resolution
-    val calc_reso = config.resolution * 2
+class HB_Interpolator(config: HbConfig) extends Module {
+    val io = IO(new HB_InterpolatorIO(resolution=config.resolution, gainBits=config.gainBits))
 
-    val subcoeffs = config.H.indices.map(config.H(_)) //Coeffs
+    val czero  = DspComplex(0.S(resolution.W),0.S(resolution.W)) //Constant complex zero
+    val inregs  = RegInit(VecInit(Seq.fill(2)(DspComplex.wire(0.S(n.W), 0.S(n.W))))) //registers for sampling rate reduction
+    inregs.map(_:=io.in.iptr_A)
 
-    val tapped = subcoeffs.reverse.map(tap => io.in.iptr_A * tap) //Coeffs * regs
-    val registerchain = RegInit(VecInit(Seq.fill(tapped.length + 1)(DspComplex.wire(0.S(calc_reso.W), 0.S(calc_reso.W)))))
+    //The half clock rate domain
+    val slowregs  = RegInit(VecInit(Seq.fill(2)(DspComplex.wire(0.S(n.W), 0.S(n.W))))) //registers for sampling rate reduction
+    (slowregs, inregs).zipped.map(_ := _)
 
-     //Summation
-    for ( i <- 0 until tapped.length) {
+    val sub1coeffs = coeffs.indices.filter(_ % 2 == 0).map(coeffs(_)) //Even coeffs for Fir1
+    println(sub1coeffs)
+
+    val tapped1 = sub1coeffs.reverse.map(tap => slowregs(0) * tap)
+    val registerchain1 = RegInit(VecInit(Seq.fill(tapped1.length + 1)(DspComplex.wire(0.S(resolution.W), 0.S(resolution.W)))))
+
+    for ( i <- 0 to tapped1.length - 1) {
         if (i == 0) {
-            registerchain(i + 1) := tapped(i)
+	        registerchain1(i + 1) := tapped1(i)
         } else {
-            registerchain(i + 1) := DspComplex.wire(registerchain(i).real + tapped(i).real, registerchain(i).imag + tapped(i).imag)
+	        registerchain1(i + 1) := DspComplex.wire(registerchain1(i).real + tapped1(i).real, registerchain1(i).imag + tapped1(i).imag)
         }
     }
 
-    val subfil = registerchain(tapped.length)
+    val subfil1 = registerchain1(tapped1.length)
 
-    val outreg = RegInit(DspComplex.wire(0.S(data_reso.W), 0.S(data_reso.W)))
+    val sub2coeffs = coeffs.indices.filter(_ % 2 == 1).map(coeffs(_)) //Odd coeffs for Fir 2
+    println(sub2coeffs)
 
-    //Scaling
-    outreg.real := (subfil.real * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
-    outreg.imag := (subfil.imag * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
+    val tapped2 = sub2coeffs.reverse.map(tap => slowregs(1) * tap)
+    val registerchain2 = RegInit(VecInit(Seq.fill(tapped2.length + 1)(DspComplex.wire(0.S(resolution.W), 0.S(resolution.W)))))
 
-    io.out.Z := outreg
+    for ( i <- 0 to tapped2.length - 1) {
+        if (i == 0) {
+	        registerchain2(i + 1) := tapped2(i)
+        } else {
+	        registerchain2(i + 1) := DspComplex.wire(registerchain2(i).real + tapped2(i).real, registerchain2(i).imag + tapped2(i).imag)
+        }
+    }
+
+    val subfil2 = registerchain2(tapped2.length)
+
+    //The double clock rate domain
+    withClock (io.clock_high){
+        val outreg = RegInit(DspComplex.wire(0.S(n.W), 0.S(n.W)))
+
+        //Slow clock sampled with fast one to control the ouput multiplexer
+        val clkreg = Wire(Bool())
+        clkreg := RegNext(clock.asUInt)
+
+        when (clkreg === true.B) { 
+            outreg.real := (subfil1.real * io.in.scale)(resolution - 1, resolution - n).asSInt
+            outreg.imag := (subfil1.imag * io.in.scale)(resolution - 1, resolution - n).asSInt
+        }.elsewhen (clkreg === false.B) { 
+            outreg.real := (subfil2.real * io.in.scale)(resolution - 1, resolution - n).asSInt
+            outreg.imag := (subfil2.imag * io.in.scale)(resolution - 1, resolution - n).asSInt
+        }
+
+        io.out.Z:= outreg
+    }
 }
 
 
 
 /** Generates verilog or sv*/
-object FIR extends App with OptionParser {
+object HB_Interpolator extends App with OptionParser {
   // Parse command-line arguments
   val (options, arguments) = getopts(default_opts, args.toList)
   printopts(options, arguments)
 
   val config_file = options("config_file")
   val target_dir = options("td")
-  var fir_config: Option[FirConfig] = None
-  FirConfig.loadFromFile(config_file) match {
+  var hb_config: Option[HbConfig] = None
+  HbConfig.loadFromFile(config_file) match {
     case Left(config) => {
-      fir_config = Some(config)
+      hb_config = Some(config)
     }
     case Right(err) => {
-      System.err.println(s"\nCould not load FIR configuration from file:\n${err.msg}")
+      System.err.println(s"\nCould not load HB configuration from file:\n${err.msg}")
       System.exit(-1)
     }
   }
 
   // Generate verilog
-  val annos = Seq(ChiselGeneratorAnnotation(() => new FIR(config=fir_config.get)))
+  val annos = Seq(ChiselGeneratorAnnotation(() => new HB_Interpolator(config=hb_config.get)))
   //(new ChiselStage).execute(arguments.toArray, annos)
   val sysverilog = (new ChiselStage).emitSystemVerilog(
-    new FIR(config=fir_config.get),
+    new HB_Interpolator(config=hb_config.get),
      
     //args
     Array("--target-dir", target_dir))
@@ -96,7 +129,7 @@ trait OptionParser {
 
   // Default values for the command-line options
   val default_opts : Map[String, String] = Map(
-    "config_file"->"fir-config.yml",
+    "config_file"->"hb-config.yml",
     "td"->"verilog/"
   )
 
