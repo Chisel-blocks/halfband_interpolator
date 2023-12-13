@@ -37,6 +37,8 @@ class HB_Interpolator(config: HbConfig) extends Module {
     (slowregs, inregs).zipped.map(_ := _)
 
     val sub1coeffs = config.H.indices.filter(_ % 2 == 0).map(config.H(_)) //Even coeffs for Fir1
+    
+    println("HB even coeffs")
     println(sub1coeffs)
 
     val tapped1 = sub1coeffs.reverse.map(tap => slowregs(0) * tap)
@@ -53,6 +55,8 @@ class HB_Interpolator(config: HbConfig) extends Module {
     val subfil1 = registerchain1(tapped1.length)
 
     val sub2coeffs = config.H.indices.filter(_ % 2 == 1).map(config.H(_)) //Odd coeffs for Fir 2
+
+    println("HB odd coeffs")
     println(sub2coeffs)
 
     val tapped2 = sub2coeffs.reverse.map(tap => slowregs(1) * tap)
