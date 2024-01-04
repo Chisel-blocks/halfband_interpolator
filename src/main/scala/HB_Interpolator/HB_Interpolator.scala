@@ -44,11 +44,12 @@ class HB_Interpolator(config: HbConfig) extends Module {
     val tapped1 = sub1coeffs.reverse.map(tap => slowregs(0) * tap)
     val registerchain1 = RegInit(VecInit(Seq.fill(tapped1.length + 1)(DspComplex.wire(0.S(calc_reso.W), 0.S(calc_reso.W)))))
 
-    for ( i <- 0 until tapped1.length) {
+    for (i <- 0 until tapped1.length) {
         if (i == 0) {
 	        registerchain1(i + 1) := tapped1(i)
         } else {
-	        registerchain1(i + 1) := DspComplex.wire(registerchain1(i).real + tapped1(i).real, registerchain1(i).imag + tapped1(i).imag)
+	        registerchain1(i + 1).real := registerchain1(i).real + tapped1(i).real
+            registerchain1(i + 1).imag := registerchain1(i).imag + tapped1(i).imag
         }
     }
 
@@ -62,11 +63,12 @@ class HB_Interpolator(config: HbConfig) extends Module {
     val tapped2 = sub2coeffs.reverse.map(tap => slowregs(1) * tap)
     val registerchain2 = RegInit(VecInit(Seq.fill(tapped2.length + 1)(DspComplex.wire(0.S(calc_reso.W), 0.S(calc_reso.W)))))
 
-    for ( i <- 0 until tapped2.length) {
+    for (i <- 0 until tapped2.length) {
         if (i == 0) {
 	        registerchain2(i + 1) := tapped2(i)
         } else {
-	        registerchain2(i + 1) := DspComplex.wire(registerchain2(i).real + tapped2(i).real, registerchain2(i).imag + tapped2(i).imag)
+	        registerchain2(i + 1).real := registerchain2(i).real + tapped2(i).real
+            registerchain2(i + 1).imag := registerchain2(i).imag + tapped2(i).imag
         }
     }
 
