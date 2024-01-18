@@ -18,6 +18,7 @@ class HB_InterpolatorIO(resolution: Int, gainBits: Int) extends Bundle {
     val clock_high = Input(Clock())
     val scale  = Input(UInt(gainBits.W))
     val iptr_A = Input(DspComplex(SInt(resolution.W), SInt(resolution.W)))
+    val output_switch = Input(UInt(1.W))
   }
   val out = new Bundle {
     val Z = Output(DspComplex(SInt(resolution.W), SInt(resolution.W)))
@@ -82,10 +83,10 @@ class HB_Interpolator(config: HbConfig) extends Module {
         val clkreg = Wire(Bool())
         clkreg := RegNext(clock.asUInt)
 
-        when (clkreg === true.B) { 
+        when ((clkreg ^ io.in.output_switch) === true.B) { 
             outreg.real := (subfil1.real * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
             outreg.imag := (subfil1.imag * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
-        }.elsewhen (clkreg === false.B) { 
+        }.elsewhen ((clkreg ^ io.in.output_switch) === false.B) { 
             outreg.real := (subfil2.real * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
             outreg.imag := (subfil2.imag * io.in.scale)(calc_reso - 1, calc_reso - data_reso).asSInt
         }
